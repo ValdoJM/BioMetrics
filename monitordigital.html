@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>BioMetrics</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #f0f0f0;
+      padding: 20px;
+      text-align: center;
+    }
+    h1 {
+      font-size: 3em;
+      color: #333;
+      margin-bottom: 20px;
+    }
+    .container {
+      max-width: 900px;
+      margin: auto;
+      background-color: white;
+      padding: 20px;
+      border-radius: 10px;
+      box-shadow: 0 0 10px #ccc;
+    }
+    .dato {
+      background: #f9f9f9;
+      padding: 15px;
+      margin: 10px auto;
+      width: 90%;
+      border-radius: 8px;
+      box-shadow: 0 0 5px #ddd;
+    }
+    input, button, select {
+      padding: 10px;
+      margin: 5px;
+      font-size: 1em;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 20px;
+    }
+    th, td {
+      border: 1px solid #ccc;
+      padding: 8px;
+    }
+    th {
+      background-color: #eee;
+    }
+  </style>
+</head>
+<body>
+  <h1 style="font-size: 140px;">BioMetrics</h1>
+  <div class="container">
+    <div id="ultimosDatos" style="margin-bottom: 30px;"></div>
+
+    <div id="gestorRegistros">
+      <h2>📋 Gestor de Registros</h2>
+      <div>
+        <button onclick="nuevoRegistro()">Nuevo Usuario</button>
+        <button onclick="registroExistente()">Usuario Existente</button>
+        <button onclick="mostrarHistorial()">Ver Historial</button>
+      </div>
+
+      <div id="registroForm" style="margin-top: 20px;"></div>
+      <div id="historial" style="margin-top: 20px;"></div>
+    </div>
+  </div>
+
+  <script>
+    let registros = JSON.parse(localStorage.getItem("registrosThingSpeak")) || [];
+
+    function guardarLocal() {
+      localStorage.setItem("registrosThingSpeak", JSON.stringify(registros));
+    }
+
+    function nuevoRegistro() {
+      const form = `
+        <h3>Nuevo Usuario</h3>
+        <input id="nombreNuevo" placeholder="Nombre del usuario"><br>
+        <input id="passNuevo" type="password" placeholder="Contraseña"><br>
+        <button onclick="guardarRegistro(true)">Guardar Registro</button>
+      `;
+      document.getElementById("registroForm").innerHTML = form;
+      document.getElementById("historial").innerHTML = "";
+    }
+
+    function registroExistente() {
+      if (registros.length === 0) {
+        alert("No hay registros guardados aún.");
+        return;
+      }
+      let opciones = registros.map((r, i) => `<option value="${i}">${r.nombre}</option>`).join('');
+      const form = `
+        <h3>Selecciona Usuario</h3>
+        <select id="usuarioSelect">${opciones}</select><br>
+        <input id="passExistente" type="password" placeholder="Contraseña"><br>
+        <button onclick="guardarRegistro(false)">Guardar Registro</button>
+      `;
+      document.getElementById("registroForm").innerHTML = form;
+      document.getElementById("historial").innerHTML = "";
+    }
+
+    function guardarRegistro(nuevo) {
+      const fecha = new Date().toLocaleString();
+      const datos = obtenerDatosDePantalla();
+
+      if (nuevo) {
+        const nombre = document.getElementById("nombreNuevo").value.trim();
+        const pass = document.getElementById("passNuevo").value.trim();
+
+        if (!nombre || !pass) {
+          alert("Nombre y contraseña requeridos.");
+          return;
+        }
+
+        const yaExiste = registros.some(r => r.nombre.toLowerCase() === nombre.toLowerCase());
+        if (yaExiste) {
+          alert("Ya existe un usuario con ese nombre. Por favor usa otro.");
+          return;
+        }
+
+        registros.push({ nombre, pass, historial: [{ fecha, datos }] });
+        guardarLocal();
+        alert("Registro guardado correctamente.");
+        document.getElementById("registroForm").innerHTML = "";
+      } else {
+        const idx = document.getElementById("usuarioSelect").value;
+        const passIngresada = document.getElementById("passExistente").value;
+
+        if (!passIngresada) {
+          alert("Debes ingresar la contraseña.");
+          return;
+        }
+
+        if (registros[idx].pass !== passIngresada) {
+          alert("Contraseña incorrecta.");
+          return;
+        }
+
+        registros[idx].historial.push({ fecha, datos });
+        guardarLocal();
+        alert("Registro guardado correctamente.");
+        document.getElementById("registroForm").innerHTML = "";
+      }
+    }
+
+    function mostrarHistorial() {
+      if (registros.length === 0) {
+        document.getElementById("historial").innerHTML = "<p>No hay registros aún.</p>";
+        return;
+      }
+
+      let selector = `
+        <h3>Historial de Registros</h3>
+        <label>Selecciona un usuario:</label>
+        <select id="usuarioHistorial">
+          <option value="">-- Elegir --</option>
+          ${registros.map((r, i) => `<option value="${i}">${r.nombre}</option>`).join("")}
+        </select><br>
+        <input id="passAcceso" type="password" placeholder="Contraseña"><br>
+        <button onclick="verificarAcceso()">Ver Historial</button>
+      `;
+
+      document.getElementById("historial").innerHTML = selector;
+      document.getElementById("registroForm").innerHTML = "";
+    }
+
+    function verificarAcceso() {
+      const idx = document.getElementById("usuarioHistorial").value;
+      const passIngresada = document.getElementById("passAcceso").value;
+
+      if (idx === "" || !passIngresada) {
+        alert("Selecciona un usuario y proporciona la contraseña.");
+        return;
+      }
+
+      const usuario = registros[idx];
+      if (usuario.pass === passIngresada) {
+        renderizarTablaHistorial(idx);
+      } else {
+        alert("Contraseña incorrecta.");
+      }
+    }
+
+    function renderizarTablaHistorial(idx) {
+      const usuario = registros[idx];
+      let html = `
+        <h4>Historial de: ${usuario.nombre}</h4>
+        <button onclick="eliminarUsuario(${idx})">🗑 Eliminar Usuario</button>
+        <table>
+          <thead>
+            <tr>
+              <th>Fecha y Hora</th>
+              <th>BPM</th>
+              <th>FFM</th>
+              <th>PGC</th>
+              <th>SMM</th>
+              <th>TBW</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+      `;
+
+      usuario.historial.forEach((registro, i) => {
+        const d = registro.datos;
+        html += `
+          <tr>
+            <td>${registro.fecha}</td>
+            <td>${d["BPM (Latidos por minuto)"] || "-"}</td>
+            <td>${d["FFM (Masa libre de grasa)"] || "-"}</td>
+            <td>${d["PGC (Porcentaje de grasa corporal)"] || "-"}</td>
+            <td>${d["SMM (Masa muscular esquelética)"] || "-"}</td>
+            <td>${d["TBW (Agua corporal total)"] || "-"}</td>
+            <td><button onclick="eliminarRegistro(${idx}, ${i})">🗑 Eliminar</button></td>
+          </tr>
+        `;
+      });
+
+      html += `</tbody></table>`;
+      document.getElementById("historial").innerHTML += html;
+    }
+
+    function eliminarRegistro(usuarioIndex, registroIndex) {
+      registros[usuarioIndex].historial.splice(registroIndex, 1);
+      guardarLocal();
+      renderizarTablaHistorial(usuarioIndex);
+    }
+
+    function eliminarUsuario(usuarioIndex) {
+      if (confirm("¿Seguro que deseas eliminar al usuario completo y todos sus registros?")) {
+        registros.splice(usuarioIndex, 1);
+        guardarLocal();
+        mostrarHistorial();
+      }
+    }
+
+    function obtenerDatosDePantalla() {
+      const datos = {};
+      document.querySelectorAll(".dato").forEach(div => {
+        const label = div.querySelector(".nombre").textContent;
+        const valor = div.querySelector(".valor").textContent;
+        datos[label] = valor;
+      });
+      return datos;
+    }
+
+    async function cargarDatosThingSpeak() {
+      const channelID = "2983638";
+      const readAPIKey = "LBS8LJILQTW9VPMW";
+      const url = `https://api.thingspeak.com/channels/${channelID}/feeds.json?api_key=${readAPIKey}&results=100`;
+
+      const campos = {
+        field1: { sigla: "BPM", nombre: "Latidos por minuto", unidad: "" },
+        field2: { sigla: "FFM", nombre: "Masa libre de grasa", unidad: "kg" },
+        field3: { sigla: "PGC", nombre: "Porcentaje de grasa corporal", unidad: "%" },
+        field4: { sigla: "SMM", nombre: "Masa muscular esquelética", unidad: "kg" },
+        field5: { sigla: "TBW", nombre: "Agua corporal total", unidad: "L" }
+      };
+
+      try {
+        const response = await fetch(url);
+        const data = await response.json();
+        const feeds = data.feeds.reverse();
+
+        const contenedor = document.getElementById("ultimosDatos");
+        contenedor.innerHTML = `<h3>🔍 Últimos datos disponibles</h3>`;
+
+        for (let i = 1; i <= 5; i++) {
+          const key = `field${i}`;
+          const { sigla, nombre, unidad } = campos[key];
+          const entrada = feeds.find(f => f[key] && f[key] !== "0" && f[key] !== 0);
+
+          if (entrada) {
+            const valor = entrada[key];
+            const fecha = new Date(entrada.created_at);
+            const fechaLocal = fecha.toLocaleString("es-MX", { dateStyle: "short", timeStyle: "short" });
+
+            contenedor.innerHTML += `
+              <div class="dato">
+                <div class="nombre"><strong>${sigla}</strong> (${nombre})</div>
+                <div class="valor" style="font-size: 1.4em; margin: 5px 0;">
+                  ${valor}${unidad ? " " + unidad : ""}
+                </div>
+                <div><small>${fechaLocal}</small></div>
+              </div>
+            `;
+          }
+        }
+      } catch (e) {
+        document.getElementById("ultimosDatos").innerText = "Error al cargar datos de ThingSpeak.";
+        console.error(e);
+      }
+    }
+
+    cargarDatosThingSpeak();
+    setInterval(cargarDatosThingSpeak, 20000);
+  </script>
+</body>
+</html>
